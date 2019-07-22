@@ -1,10 +1,8 @@
 """
 Clare
-2019/07/08
+2019/07/17
 """
 
-
-# Set robot
 from wxpy import *
 import datetime
 from threading import Timer
@@ -14,36 +12,29 @@ import time
 import os
 import csv
 
+# Set robot
+# Change the path before using
 bot=Bot()
 bot.cache_path=True
 bot.enable_puid('wxpy_puid.pkl')
+file_path = "/Users/qianxinxuan/Desktop/wxrobot/file/"
 
-file_path = "/Users/caixiongfeng/Desktop/wxrobot/file/"
+# Functions!
 
-
-
-
-# 在 Web 微信中把自己加为好友
-#bot.self.add()
-#bot.self.accept()
-
-# 发送消息给自己
-#bot.self.send('能收到吗？')
-
-
-
-# find target groups, create empty new list to collect @ msgs
-# find specific groups and add them to a list company_groups
-to_do_lists = []
-
-
+# send "add 群聊名称" to the robot to add that group chat to the list.
+# if the group chat can be found in the account of robot, call add_new_group()
+# else, call add_group()
 def add_new_group(msg_chat, group):
+    """
+    go through all csv files in the folder, if the group chat is already in the folder,
+    send "已含有". Else, create a new csv for that group chat and write 5 columns, return "已添加".
+    """
     is_already_in = False
     for root, dirs, files in os.walk(file_path):
         for file in files:
             if os.path.splitext(file)[1] == '.csv' and os.path.splitext(file)[0] == group.name:
                 is_already_in = True
-                msg_chat.send('已含有此群聊')
+                msg_chat.send('提醒列表中已含有此群聊')
     if(is_already_in == False):
         print(group.name)
         file_name = file_path + group.name + '.csv'
@@ -52,31 +43,45 @@ def add_new_group(msg_chat, group):
         with open(file_name, 'w', newline='', encoding='utf-8-sig') as f:
             csv_write = csv.writer(f)
             csv_write.writerow(to_do_list_head)
-        msg_chat.send('已添加此群聊')
+        msg_chat.send('已向提醒列表中添加此群聊')
         # f.close()
 
 def add_group(msg_chat, group_name):
+    """
+    if the group chat cannot be found in the robot account, call this function
+    and return "找不到", else call add_new_group()
+    """
     company_groups = bot.groups().search(group_name)
     for company_group in company_groups:
         print("find name: " + company_group.name)
         add_new_group(msg_chat, company_group)
         time.sleep(3)
     if(len(company_groups) == 0):
-        msg_chat.send('无此群聊')
+        msg_chat.send('查找不到此群聊（可能刚建群未更新，可能名字输入错误）')
 
-# company_groups.append(company_group), add each target group to target groups
-# create a new list for each target group and add it to the msg group - to_do_lists.
-# for company_group in company_groups:
-#     # to_do_lists.append([])
-#     print('test add group')
-#     add_new_group(company_group)
+# send "delete 群聊名称" to the robot, the group chat will be removed from the notification list
+def delete_group(msg_chat, group_name):
+    """
+    go through all csv files in the foler, if the group chat can be found, delete
+    the file to remove it and return "成功移除", else return “找不到”.
+    """
+    have_group = False
+    for root, dirs, files in os.walk(file_path):
+        for file in files:
+            if(group_name in file and 'csv' in file):
+                os.remove(file_path + file)
+                have_group = True
+                msg_chat.send('已从提醒列表中移除此群聊')
+    if(have_group == False):
+        msg_chat.send('查找不到此群聊（可能刚建群未更新，可能名字输入错误）')
 
-
-# a loop for each target group
-# if the msg is unaddressed, status=0; else status =1
-# for each group, do a loop for each single to_do_list
-# if msg_status=1, remove it from to_do_list
+# send notifications at 09:30 every day to inform unaddressed msgs.
 def send_daily_news():
+    """
+    go through all csv files in the folder (if there are any). For each file, send
+    each line as a wechat msg to that group chat. If there is no unaddressed msg, send
+    "无待办事项".
+    """
     for root, dirs, files in os.walk(file_path):
         for file in files:
             if('csv' in file):
@@ -102,50 +107,48 @@ def send_daily_news():
                         content.append(line)
                         index = index + 1
                 for to_do in content:
-                    group_chat.send('待办序号: {},  消息内容: {}, 延迟天数: {} '.format(to_do[1], to_do[2], to_do[4]))
+                    group_chat.send('序号: {},  消息内容: {}, 延误天数: {} '.format(to_do[1], to_do[2], to_do[4]))
                 if(index == 1):
                     group_chat.send('无待办事项')
                 write_file = csv.writer(open(file_name,'w',encoding='utf-8-sig'))
                 write_file.writerow(to_do_list_head)
                 write_file.writerows(content)
 
-    # # print(to_do_list)
-    # i = 0
-    # for company_group in company_groups:
-    #     msg_index = 0
-    #     for to_do_msg in to_do_lists[i]:
-    #         if(to_do_msg['status'] == 1):
-    #             to_do_lists[i].remove(to_do_msg)
-    #     for to_do_msg in to_do_lists[i]:
-    #         msg_index = msg_index + 1
-    #         if(to_do_msg['status'] == 0):
-    #             company_group.send('待办序号: {},  消息内容: {} '.format(msg_index, to_do_msg['txt']))
-    #             to_do_lists[i][msg_index - 1]['num'] = to_do_lists[i][msg_index - 1]['num'] + 1
-    #     i = i + 1
-    #     time.sleep(2)
-
-
+# send delay unaddressed msgs at 13：30 every day.
 def send_delay_news():
-    global to_do_lists
-    # print(to_do_list)
-#     i = 0
-#     for company_group in company_groups:
-#         msg_index = 0
-#         for to_do_msg in to_do_lists[i]:
-#             if(to_do_msg['status'] == 1):
-#                 to_do_lists[i].remove(to_do_msg)
-#         for to_do_msg in to_do_lists[i]:
-#             msg_index = msg_index + 1
-#             if(to_do_msg['status'] == 0 and to_do_msg['num'] > 1):
-#                 company_group.send('延误！ 待办序号: {},  延误天数: {}, 消息内容: {} '.format(msg_index, to_do_msg['num']-1, to_do_msg['txt']))
-# #            if(to_do_msg['status'] == 0 and to_do_msg['num'] == 1):
-# #                company_group.send('待办序号: {},  消息内容: {} '.format(msg_index, to_do_msg['txt']))
-#         i = i + 1
-#         time.sleep(2)
-    # t = Timer(10, send_news)
-    # t.start()
+    """
+    go through each csv in the folder, if "延误天数" >1, regard it as delayed and
+    send notifications in the corresponding group chat.
+    """
+    for root, dirs, files in os.walk(file_path):
+        for file in files:
+            if('csv' in file):
+                group_name = file.split(".", 1)[0]
+                file_name = file_path + file
+                print(group_name)
+                group_chats = bot.groups().search(group_name)
+                if(len(group_chats) == 0):
+                    continue
+                group_chat = ensure_one(bot.groups().search(group_name))
+                content = []
+                print(file_name)
+                csv_file=csv.reader(open(file_name,'r'))
+                print(csv_file)
+                to_do_list_head = ['群聊', '序号', '消息内容', '消息状态', '延误天数']
+                index = 1;
+                for line in csv_file:
+                    print(line)
+                    # chat_from.send('群聊: {}, 待办序号: {},  消息内容: {} '.format(line[0], line[1], line[2]))
+                    if(line[3] == '0' and int(line[4]) > 1):
+                        content.append(line)
+                for to_do in content:
+                    group_chat.send('延误！ 序号: {},  消息内容: {}, 延误天数: {} '.format(to_do[1], to_do[2], to_do[4]))
 
+# send "request" to the robot to get all current unaddressed msgs
 def send_all_list(chat_from):
+    """
+    go through each csv file and each line in the file, return all unaddressed msgs
+    """
     for root, dirs, files in os.walk(file_path):
         for file in files:
             if('csv' in file):
@@ -158,17 +161,19 @@ def send_all_list(chat_from):
                 for line in csv_file:
                     # content.append(line)
                     print(line)
-                    msg_num = msg_num + 1
-                    # chat_from.send('群聊: {}, 待办序号: {},  消息内容: {} '.format(line[0], line[1], line[2]))
                     if(line[3] == '0'):
-                        chat_from.send('群聊: {}, 待办序号: {},  消息内容: {} '.format(line[0], line[1], line[2]))
+                        chat_from.send('群聊: {}, 序号: {},  消息内容: {} '.format(line[0], line[1], line[2]))
+                        msg_num = msg_num + 1
                 if(msg_num == 0):
-                    chat_from.send('群聊: {}, 无待办消息 '.format(group_name))
-
+                    chat_from.send('群聊: {}, 无待办事项 '.format(group_name))
             # csv_file.close()
 
-
+# send "request" to the group chat to get all current unaddressed msgs in that group chat
 def send_group_list(chat_from):
+    """
+    go through all csv files to find the correct file. go through all lines and send them
+    as unaddressed msgs to that group chat
+    """
     for root, dirs, files in os.walk(file_path):
         for file in files:
             if('csv' in file and chat_from.name in file):
@@ -179,16 +184,21 @@ def send_group_list(chat_from):
                 msg_num = 0
                 for line in csv_file:
                     if(line[3] == '0'):
-                        chat_from.send('群聊: {}, 待办序号: {},  消息内容: {} '.format(line[0], line[1], line[2]))
+                        chat_from.send('群聊: {}, 序号: {},  消息内容: {} '.format(line[0], line[1], line[2]))
                         msg_num = msg_num + 1
-                chat_from.send('无待办消息 ')
+                if(msg_num == 0):
+                    chat_from.send('无待办事项 ')
                     # content.append(line)
                     # print(line[3])
                     # chat_from.send('待办序号: {},  消息内容: {} '.format(line[1], line[2]))
-                    
             # csv_file.close()
 
+# add a new @ msg to the to_do_list by writing in the corresponding csv file
 def add_group_to_do(chat_group, msg_text):
+    """
+    go through all the csv files in the folder to find the group chat where the msg
+    is received. write the msg in that csv file.
+    """
     for root, dirs, files in os.walk(file_path):
         for file in files:
             if(file == chat_group.name + '.csv'):
@@ -210,8 +220,13 @@ def add_group_to_do(chat_group, msg_text):
                 write_file.writerow(msg_info)
                 # write_file.close()
 
-
+# send "ad #" and @ the robot to mark the msg as "addressed" and remove it from to_do_list
 def delete_group_to_do(chat_group, msg_text):
+    """
+    go through all the csv files to find the correct group chat, find the # after "ad",
+    modify the status of the corresponding msg to 1, in order to delete it when send_daily_news()
+    is called.
+    """
     num_list = re.findall("\d+", msg_text)
     to_do_index = 0
     if(len(num_list) >= 1):
@@ -232,14 +247,13 @@ def delete_group_to_do(chat_group, msg_text):
                     content[to_do_index][3] = 1
                 write_file = csv.writer(open(file_name,'w',encoding='utf-8-sig'))
                 write_file.writerows(content)
-
                 # #['群聊', '序号', '消息内容', '消息状态', '延误天数']
                 # msg_info = [chat_group, list_index, msg_text, 0, 0]
                 # write_file = csv.writer(open(file_name,'a'))
                 # write_file.writerow(msg_info)
                 # write_file.close()
 
-
+# 线程
 @bot.register()
 def process_message(msg):
     # global to_do_lists
@@ -255,70 +269,41 @@ def process_message(msg):
             group_name = group_msg_list_[1]
             print(group_name)
             add_group(msg.chat, group_name)
-    
+
     if isinstance(msg.chat, Group) and '@' in msg.text and msg.sender != bot.self and not msg.is_at:
-        print("add to do")
+        print("add todo")
         add_group_to_do(msg.chat, msg.text)
-    
+
     if not isinstance(msg.chat, Group) and ('request' in msg.text or 'Request' in msg.text):
         print("request all todo")
         send_all_list(msg.chat)
-    
+
     if isinstance(msg.chat, Group) and ('request' in msg.text or 'Request' in msg.text):
         print("request group todo")
         send_group_list(msg.chat)
 
-    if isinstance(msg.chat, Group) and ('Ad' in msg.text or 'ad' in msg.text) and msg.is_at:
+    if isinstance(msg.chat, Group) and ('Address' in msg.text or 'address' in msg.text) and msg.is_at:
         print("delete group todo")
         delete_group_to_do(msg.chat, msg.text)
 
+    if not isinstance(msg.chat, Group) and msg.receiver == bot.self and ('Delete' in msg.text or 'delete' in msg.text):
+        group_msg_list_ = msg.text.split(" ", 1)
+        if(len(group_msg_list_) > 1):
+            group_name = group_msg_list_[1]
+            print(group_name)
+            delete_group(msg.chat, group_name)
 
-    # list_index = company_groups.index(msg.chat)
-    # if('@' in msg.text and msg.sender != bot.self and not msg.is_at):
-    #     to_do_msg = {'txt':msg.text, 'status':0, 'num':1}
-    #     to_do_lists[list_index].append(to_do_msg)
-    # if(('Ad' in msg.text or 'ad' in msg.text) and msg.is_at):
-    #     num_list = re.findall("\d+", msg.text)
-    #     num = 0
-    #     if(len(num_list) >= 1):
-    #         num = int(num_list[0])
-    #     if((num <= len(to_do_lists[list_index])) and (num >= 1)):
-    #         to_do_lists[list_index][num - 1]['status'] = 1
-
-# check each msg received
-# if it is an @ msg and it does not @ the bot, make it a to_do_msg and add it to to_do_list
-# if it is an @ msg and it @ the bot and it is in the format "ad #", the corresponding to_do_msg's status is changed to 1
-# @bot.register(company_groups, TEXT)
-# def process_message(msg):
-#     global to_do_lists
-#     list_index = company_groups.index(msg.chat)
-#     if('@' in msg.text and msg.sender != bot.self and not msg.is_at):
-#         to_do_msg = {'txt':msg.text, 'status':0, 'num':1}
-#         to_do_lists[list_index].append(to_do_msg)
-#     if(('Ad' in msg.text or 'ad' in msg.text) and msg.is_at):
-#         num_list = re.findall("\d+", msg.text)
-#         num = 0
-#         if(len(num_list) >= 1):
-#             num = int(num_list[0])
-#         if((num <= len(to_do_lists[list_index])) and (num >= 1)):
-#             to_do_lists[list_index][num - 1]['status'] = 1
-#                 # to_do_list.remove(to_do_list[num - 1])
-
-
-# schedule a time when the bot should do send_news() or send_delay_news()
+# schedule a time when the bot should do send_daily_news() or send_delay_news()
 def on_time_send_news():
     # when using the bot, uncomment the following two lines
-    # schedule.every().day.at("09:30").do(send_news)
-    # schedule.every().day.at("13:30").do(send_delay_news)
-
+    schedule.every().day.at("09:30").do(send_daily_news)
+    schedule.every().day.at("13:30").do(send_delay_news)
     # the following two lines are for testing
-    schedule.every(1).minutes.do(send_daily_news)
-    schedule.every(1).minutes.do(send_delay_news)
+    # schedule.every(2).minutes.do(send_daily_news)
+    # schedule.every(2).minutes.do(send_delay_news)
     while True:
         schedule.run_pending()
         time.sleep(2)
-
-
 
 if __name__ == "__main__":
     on_time_send_news()
